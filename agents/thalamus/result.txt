@@ -1,0 +1,26 @@
+[Thalamus] Setting Goal embeddings 
+[sms] relevance=0.729 | Mom: Can you pick up groceries on your way home?
+[email] relevance=0.747 | Boss: Urgent meeting at 2 PM regarding the new client
+[app] relevance=0.783 | Fitness Tracker: You haven't moved in 2 hours. Time for a walk!
+[calendar] relevance=0.732 | Dentist appointment tomorrow at 10 AM
+[news] relevance=0.624 | Traffic alert: Major accident on the highway, expect delays
+
+
+
+
+
+❯ python thalamus_main.py
+[Thalamus] Setting Goal embeddings 
+[sms] relevance=0.486 | Mom: Can you pick up groceries on your way home?
+[email] relevance=0.498 | Boss: Urgent meeting at 2 PM regarding the new client
+[app] relevance=0.522 | Fitness Tracker: You haven't moved in 2 hours. Time for a walk!
+[calendar] relevance=0.488 | Dentist appointment tomorrow at 10 AM
+[news] relevance=0.416 | Traffic alert: Major accident on the highway, expect delays
+(neural_surgery) 
+
+
+
+
+'sequence': 'The House is on Fire ',
+'labels': ['threat', 'high reward', 'social conflict', 'novelty', 'physical pain', 'safe', 'routine'], 
+'scores': [0.8871956467628479, 0.03781992197036743, 0.02671550214290619, 0.02276393212378025, 0.020097576081752777, 0.003261987352743745, 0.0021453769877552986]}

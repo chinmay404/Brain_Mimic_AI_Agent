@@ -1,0 +1,5 @@
+{
+  "name": "Neuro-Mimetic AI Core",
+  "description": "A 3D visualization of an AI agent's internal architecture mapped to human brain regions, monitoring simulated neurotransmitter levels (Dopamine, Serotonin, Oxytocin) and processing pathways.",
+  "requestFramePermissions": []
+}
