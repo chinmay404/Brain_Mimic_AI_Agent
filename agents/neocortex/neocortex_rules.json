@@ -1,0 +1,26 @@
+[
+  {
+    "condition": {
+      "threat_level": ">=0.8"
+    },
+    "action": "plan_execution",
+    "confidence": 1.0,
+    "source_cluster_id": "cluster_0"
+  },
+  {
+    "condition": {
+      "is_peak_hours": true,
+      "threat_level": ">=0.8",
+      "traffic_spike": true
+    },
+    "action": "plan_execution",
+    "confidence": 1.0,
+    "source_cluster_id": "cluster_0"
+  },
+  {
+    "condition": {},
+    "action": "plan_execution",
+    "confidence": 1.0,
+    "source_cluster_id": "cluster_0"
+  }
+]

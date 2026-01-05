@@ -54,7 +54,7 @@ class OFC:
         temporal_discount: float = 0.0,
         use_cache: bool = True,
     ):
-        print(f"[OFC] 🧠 Initializing Orbitofrontal Cortex (LLM-powered)...")
+        print(f"[OFC] Initializing Orbitofrontal Cortex...")
         
         self.llm = self.get_llm()
         self.dopamine = dopamine
@@ -96,7 +96,7 @@ Consider:
 
 Respond in JSON format only."""
 
-        print(f"[OFC] 🧠 Utility circuits ready. (DA={dopamine:.2f}, 5-HT={serotonin:.2f})")
+        print(f"[OFC] Utility circuits ready. (DA={dopamine:.2f}, 5-HT={serotonin:.2f})")
     
     def _llm_evaluate(
         self,
@@ -372,7 +372,7 @@ Respond with JSON:
         print(f"[OFC] Neurochemistry: DA={self.dopamine:.2f}, 5-HT={self.serotonin:.2f}")
 
     def get_llm(self):
-        api_key = "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"
+        api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise ValueError("GROQ_API_KEY environment variable not set.")
         llm = ChatGroq(

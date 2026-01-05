@@ -26,7 +26,7 @@ def get_groq_llm(api_key: Optional[str] = None, model: str = "openai/gpt-oss-120
 	if ChatGroq is None:
 		raise ImportError("langchain_groq.ChatGroq is not available. Install the provider package.")
 
-	key = "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"
+	key = api_key or os.getenv("GROQ_API_KEY")
 	if not key:
 		raise ValueError("GROQ_API_KEY not provided and no api_key argument supplied")
 

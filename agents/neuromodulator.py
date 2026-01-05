@@ -1,3 +1,5 @@
+import json
+import os
 from pydantic import BaseModel, Field
 
 class Neuromodulators(BaseModel):
@@ -8,6 +10,38 @@ class Neuromodulators(BaseModel):
     dopamine_level: float = Field(default=0.2, ge=0.0, le=1.0, description="Motivation, Reward Prediction, Creativity")
     serotonin_level: float = Field(default=0.5, ge=0.0, le=1.0, description="Mood Regulation, Inhibition, Safety")
     norepinephrine_level: float = Field(default=0.5, ge=0.0, le=1.0, description="Arousal, Focus, Urgency")
+
+class NeuroState:
+    """
+    Global brain chemical state.
+    Readable everywhere, writable only via controllers.
+    """
+    def __init__(self, persistence_file="neuro_state.json"):
+        self.modulators = Neuromodulators()
+        self.persistence_file = persistence_file
+        self.load()
+
+    def snapshot(self):
+        return self.modulators.model_copy(deep=True)
+
+    def save(self):
+        try:
+            with open(self.persistence_file, "w") as f:
+                f.write(self.modulators.model_dump_json(indent=2))
+        except Exception as e:
+            print(f"Warning: Failed to save neuro state: {e}")
+
+    def load(self):
+        if os.path.exists(self.persistence_file):
+            try:
+                with open(self.persistence_file, "r") as f:
+                    data = json.load(f)
+                    self.modulators = Neuromodulators(**data)
+            except Exception as e:
+                print(f"Warning: Failed to load neuro state: {e}")
+
+# Global instance
+GLOBAL_NEURO_STATE = NeuroState()
 
 def get_neuro_cocktail(neuro: Neuromodulators):
     """
@@ -36,9 +70,9 @@ def get_neuro_cocktail(neuro: Neuromodulators):
     # Scenario B: "Anxious/Stressed" (Low Serotonin + High Norepinephrine)
     elif s < 0.3 and n > 0.7:
         instruction = (
-            "INTERNAL STATE: ANXIOUS. You are under pressure. You are worried about mistakes. "
-            "Double check your work. Be extremely apologetic and careful. "
-            "You feel nervous."
+            "INTERNAL STATE: HIGH RISK. "
+            "Prioritize correctness over speed. "
+            "Verify assumptions. Avoid irreversible actions."
         )
 
     # Scenario C: "Depressed/Burnout" (Low Dopamine + Low Norepinephrine)
@@ -65,16 +99,37 @@ def get_neuro_cocktail(neuro: Neuromodulators):
         "instruction": instruction
     }
 
-def update_rpe(neuro: Neuromodulators, expected: float, actual: float) -> Neuromodulators:
+def apply_rpe_with_acc(
+    neuro: Neuromodulators,
+    expected: float,
+    actual: float,
+    acc_cns: float
+) -> Neuromodulators:
     """
-    Updates Dopamine based on Reward Prediction Error (RPE).
-    RPE = Actual - Expected
+    Dopamine update gated by ACC conflict.
+    High conflict => low learning.
     """
-    RPE = actual - expected
-    learning_rate = 0.25 
-    new_dopamine = neuro.dopamine_level + (RPE * learning_rate)
-    neuro.dopamine_level = max(0.0, min(1.0, new_dopamine))
-    
+    rpe = actual - expected
+    base_lr = 0.25
+
+    effective_lr = base_lr * (1.0 - acc_cns)
+    delta = rpe * effective_lr
+
+    neuro.dopamine_level = float(
+        max(0.0, min(1.0, neuro.dopamine_level + delta))
+    )
+    return neuro
+
+def acc_neuromodulation(neuro: Neuromodulators, cns: float):
+    """
+    ACC response to conflict.
+    """
+    # Conflict increases norepinephrine (focus)
+    neuro.norepinephrine_level = min(1.0, neuro.norepinephrine_level + 0.3 * cns)
+
+    # Conflict suppresses dopamine (pause learning)
+    neuro.dopamine_level = max(0.0, neuro.dopamine_level - 0.2 * cns)
+
     return neuro
 
 def pfc_top_down_regulation(neuro: Neuromodulators, focus_needed: bool = False, calm_needed: bool = False) -> Neuromodulators:

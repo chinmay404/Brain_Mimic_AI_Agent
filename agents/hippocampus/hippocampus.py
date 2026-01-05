@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple , Any
 from datetime import datetime
 import numpy as np
 import uuid
@@ -30,6 +30,8 @@ class EpisodicMemory:
 
     # Action signature (numeric hash)
     action_hash: int = 0
+    action_signature: str = "" # NEW: Store readable action for Neocortex
+
 
     # Outcome
     predicted_utility: float = 0.0
@@ -45,7 +47,12 @@ class EpisodicMemory:
     success: bool = True
     reliability: float = 0.3  # Start low, not high
     recall_count: int = 0  # Track how often recalled for repetition bonus
-
+    
+    # NEW: Signal for cortical transfer (Schema formation)
+    ready_for_transfer: bool = False
+    
+    # NEW: Store raw features for Neocortical abstraction (Rule Mining)
+    features: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class MemoryBias:
@@ -65,6 +72,9 @@ class MemoryBias:
     action_match: float = 0.0  # How well action matches
 
     note: str = ""
+    
+    # NEW: Signal that this was a habit/schema match (if we were to return it)
+    is_habit: bool = False
 
 
 @dataclass
@@ -113,6 +123,9 @@ class Hippocampus:
         "medium": 0.80,
         "high": 0.90
     }
+    
+    # NEW: If familiarity > this AND threat is low, skip recall (Habituation)
+    HABITUATION_THRESHOLD = 0.92 
 
     # Consolidation settings
     SOFT_CONSOLIDATION_INTERVAL = 50  # Soft prune every N episodes
@@ -353,9 +366,24 @@ class Hippocampus:
 
         return self._normalize(raw)
 
-    def should_store(self, rpe: float) -> bool:
-        """Only surprise creates memory."""
-        return abs(rpe) > self.surprise_threshold
+    def should_store(self, rpe: float, threat_level: float, is_first_success: bool) -> bool:
+        """
+        Expanded storage logic.
+        Store if:
+        1. High Surprise (RPE)
+        2. High Threat (Trauma/Survival)
+        3. First time success (Novel achievement)
+        """
+        if abs(rpe) > self.surprise_threshold:
+            return True
+        
+        if threat_level > 0.8:
+            return True
+            
+        if is_first_success:
+            return True
+            
+        return False
 
     def store(
         self,
@@ -367,16 +395,26 @@ class Hippocampus:
         rpe: float,
         success: bool,
         goal_context: str = "",
-        dominant_stimuli: List[str] = None
+        dominant_stimuli: List[str] = None,
+        is_first_success: bool = False,
+        features: Dict[str, Any] = None
     ) -> Optional[str]:
-        """Store episodic memory with proper ID management."""
-        if not self.should_store(rpe):
+        """Store episodic memory with proper ID management and Interference."""
+        if not self.should_store(rpe, threat_level, is_first_success):
             return None
 
         # Apply dopamine tag at encoding only
         fine_embedding = self._apply_dopamine_tag(state_embedding.astype(np.float32))
         coarse_embedding = self._create_coarse_embedding(fine_embedding)
         action_embedding = self._create_action_embedding(action_signature)
+
+        # NEW: Retroactive Interference (The "Forgetting by Conflict" logic)
+        # Before storing, check if this contradicts existing memories
+        self._apply_retroactive_interference(
+            fine_embedding, 
+            action_embedding, 
+            success
+        )
 
         corrected_expectation = predicted_utility + rpe
         
@@ -400,6 +438,7 @@ class Hippocampus:
             _goal_context=goal_context,
             _dominant_stimuli=dominant_stimuli or [],
             action_hash=hash(action_signature) % (2**31),
+            action_signature=action_signature, # NEW
             predicted_utility=predicted_utility,
             actual_utility=actual_utility,
             rpe=rpe,
@@ -408,7 +447,9 @@ class Hippocampus:
             initial_dopamine_tag=self._neuro_state.dopamine,
             success=success,
             reliability=reliability,
-            recall_count=0
+            recall_count=0,
+            ready_for_transfer=False,
+            features=features or {}
         )
 
         # FIX 1: Add with explicit IDs
@@ -431,6 +472,49 @@ class Hippocampus:
         self.save_state()
         return episode_id
 
+    def _apply_retroactive_interference(
+        self, 
+        new_state: np.ndarray, 
+        new_action: np.ndarray, 
+        new_success: bool
+    ) -> None:
+        """
+        Biological forgetting: If new experience contradicts old ones, 
+        suppress the old ones.
+        """
+        if self.fine_index.ntotal == 0:
+            return
+
+        # Find very similar past states
+        k = 5
+        scores, ids = self.fine_index.search(new_state.reshape(1, -1), k)
+        
+        for i in range(k):
+            faiss_id = int(ids[0][i])
+            similarity = float(scores[0][i])
+            
+            if faiss_id < 0 or similarity < 0.85: # Only check highly similar memories
+                continue
+                
+            episode = self._episodes.get(faiss_id)
+            if not episode:
+                continue
+                
+            # Check action match
+            ep_action = np.array(episode.action_embedding, dtype=np.float32)
+            action_sim = float(np.dot(new_action, ep_action))
+            
+            if action_sim > 0.9:
+                # Same situation, Same action... Different outcome?
+                old_success = episode.success
+                
+                if old_success != new_success:
+                    # CONFLICT DETECTED
+                    # The world has changed. The old memory is dangerous.
+                    # Slash reliability.
+                    episode.reliability *= 0.4
+                    episode.note = f"Suppressed by interference from newer episode"
+
     def recall(
         self,
         state_embedding: np.ndarray,
@@ -449,6 +533,18 @@ class Hippocampus:
         query_fine = self._normalize(state_embedding.astype(np.float32))
         query_coarse = self._create_coarse_embedding(query_fine)
         query_action = self._create_action_embedding(action_signature) if action_signature else None
+
+        # NEW: Habituation Check (Refusing Recall)
+        # If we are safe and this is extremely familiar, let the Cortex/Habits handle it.
+        # This prevents "over-thinking" routine tasks.
+        if current_threat_level < 0.3:
+            # Quick check on coarse index
+            k_check = 1
+            scores, _ = self.coarse_index.search(query_coarse.reshape(1, -1), k_check)
+            if scores[0][0] > self.HABITUATION_THRESHOLD:
+                # "I've seen this a million times and I'm safe."
+                # Return None to signal "Use Default Policy"
+                return None
 
         # Get thresholds
         dynamic_threshold = self._get_dynamic_threshold()
@@ -497,6 +593,11 @@ class Hippocampus:
 
             # Update recall count for repetition bonus
             episode.recall_count += 1
+            
+            # NEW: Check for Schema Promotion
+            # If recalled often and reliable, mark for transfer to Cortex
+            if episode.recall_count > 5 and episode.reliability > 0.8:
+                episode.ready_for_transfer = True
             
             # FIX 2: Reliability increases with consistent recall
             repetition_bonus = min(0.3, episode.recall_count * 0.05)
@@ -610,13 +711,22 @@ class Hippocampus:
     def _soft_consolidate(self) -> None:
         """
         FIX 6: Soft consolidation - runs while active.
-        Light pruning + dopamine decay, no full rebuild.
+        Light pruning + dopamine decay + Schema Identification.
         """
         now = datetime.now()
         
+        schema_candidates = []
+
         # Decay dopamine tags
         for episode in self._episodes.values():
             episode.dopamine_tag = max(0.0, episode.dopamine_tag - self.DA_DECAY_RATE)
+            
+            # Identify Schema Candidates (Pattern Abstraction)
+            if episode.ready_for_transfer:
+                schema_candidates.append(episode.episode_id)
+        
+        # In a full system, we would emit 'schema_candidates' here to the Neocortex
+        # for rule extraction.
         
         # Mark low-value episodes for removal if over soft limit
         if len(self._episodes) > int(self.max_memories * 0.9):
@@ -756,3 +866,38 @@ class Hippocampus:
                 "serotonin": self._neuro_state.serotonin
             }
         }
+
+    def get_clusters(self, similarity_threshold: float = 0.85, min_cluster_size: int = 3) -> List[List[EpisodicMemory]]:
+        """
+        Groups memories into clusters based on state similarity.
+        Used for Neocortical consolidation.
+        """
+        clusters = []
+        visited = set()
+        
+        # Get all memories
+        all_memories = list(self._episodes.values())
+        
+        for i, mem in enumerate(all_memories):
+            if mem.episode_id in visited:
+                continue
+                
+            # Start a new cluster
+            current_cluster = [mem]
+            visited.add(mem.episode_id)
+            
+            # Find neighbors
+            for j, other in enumerate(all_memories):
+                if i == j or other.episode_id in visited:
+                    continue
+                
+                # Calculate similarity
+                sim = np.dot(mem.state_embedding, other.state_embedding)
+                if sim > similarity_threshold:
+                    current_cluster.append(other)
+                    visited.add(other.episode_id)
+            
+            if len(current_cluster) >= min_cluster_size:
+                clusters.append(current_cluster)
+                
+        return clusters

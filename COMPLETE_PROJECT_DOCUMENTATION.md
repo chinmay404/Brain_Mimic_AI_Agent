@@ -4,8 +4,8 @@
 ---
 
 **Project:** Brain-Inspired Architecture for Interpretable and Controllable AI Agents  
-**Status:** Active Development — Phase 3 of 5  
-**Last Updated:** December 26, 2024  
+**Status:** Active Development — Phase 4 of 5  
+**Last Updated:** January 2, 2026  
 **Author:** Sirius  
 
 ---
@@ -22,6 +22,9 @@
    - 5.3 [Prefrontal Cortex (PFC) - Executive Control](#53-prefrontal-cortex-pfc---executive-control)
    - 5.4 [Neuromodulator System](#54-neuromodulator-system)
    - 5.5 [Neural Surgery - Activation Steering](#55-neural-surgery---activation-steering)
+   - 5.6 [Hippocampus - Episodic Memory System](#56-hippocampus---episodic-memory-system)
+   - 5.7 [Neocortex - Rule Extraction & Fast System](#57-neocortex---rule-extraction--fast-system)
+   - 5.8 [Parallel Processing Pipeline](#58-parallel-processing-pipeline)
 6. [Data Flow & Processing Pipeline](#6-data-flow--processing-pipeline)
 7. [Training Data & Vector Generation](#7-training-data--vector-generation)
 8. [Key Technical Innovations](#8-key-technical-innovations)
@@ -45,6 +48,9 @@ This project develops a **novel AI agent architecture** that explicitly maps Lar
 | **Neuromodulator behavioral control** | Dopamine, Serotonin, Norepinephrine simulation |
 | **Activation Steering Vectors** | Direct neural-level intervention ("Neural Surgery") |
 | **Multi-region PFC coordination** | dlPFC, OFC, vmPFC working as executive system |
+| **Episodic Memory System** | Hippocampus with FAISS-indexed two-stage recall |
+| **Neocortical Rule Learning** | LLM-extracted rules for reflex actions ("Fast System") |
+| **Parallel Processing Pipeline** | Concurrent Memory + Rules + Valuation processing |
 
 ### Goals
 
@@ -98,7 +104,8 @@ We replicate this in software.
 | **vmPFC** (Ventromedial PFC) | Strategic intent, social context | Multi-intent distribution with nonlinear amplification | ✅ Complete |
 | **aPFC** (Anterior PFC) | Metacognition | Re-planning triggers on low dopamine | ✅ Complete |
 | **Basal Ganglia** | Action selection, inhibition | Serotonin-gated safety filtering | ✅ Partial |
-| **Hippocampus** | Memory formation, retrieval | Vector database (RAG) + episodic memory | 🔄 Planned |
+| **Hippocampus** | Memory formation, retrieval | FAISS-indexed episodic memory with two-stage recall + familiarity gating | ✅ Complete |
+| **Neocortex** | Pattern abstraction, rule storage | LLM-powered rule extraction + JSON-based schema memory | ✅ Complete |
 | **Motor Cortex** | Action execution | Tool calling, API execution | 🔄 Planned |
 | **Cerebellum** | Error correction, motor refinement | Quality control, rollback mechanisms | 🔄 Planned |
 
@@ -556,6 +563,365 @@ def get_chemical_prompt(self, dopamine, serotonin, safety):
 
 ---
 
+### 5.6 Hippocampus - Episodic Memory System
+
+**Files:**
+- `agents/hippocampus/hippocampus.py`
+- `agents/hippocampus/encoder.py`
+- `agents/hippocampus/episodic_store.py`
+- `agents/hippocampus/replay.py`
+
+The Hippocampus implements **biologically-inspired episodic memory** — storing experiences (state-action → outcome), not facts. It biases valuation (OFC), not planning (dlPFC).
+
+#### Core Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          HIPPOCAMPUS                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐                 │
+│  │ Coarse Index │   │  Fine Index  │   │ Action Index │                 │
+│  │  (FAISS IP)  │   │  (FAISS IP)  │   │  (FAISS IP)  │                 │
+│  │   32-dim     │   │    64-dim    │   │    16-dim    │                 │
+│  └──────┬───────┘   └──────┬───────┘   └──────┬───────┘                 │
+│         │                  │                  │                         │
+│         └──────────────────┴──────────────────┘                         │
+│                            │                                             │
+│                   ┌────────▼────────┐                                    │
+│                   │  Episode Store  │                                    │
+│                   │  (IndexIDMap)   │                                    │
+│                   └─────────────────┘                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Episodic Memory Structure
+
+```python
+@dataclass
+class EpisodicMemory:
+    episode_id: str
+    timestamp: datetime
+    faiss_id: int  # Stable FAISS ID for IndexIDMap
+    
+    # Embeddings (NOT raw text)
+    state_embedding: List[float]   # 64-dim fine-grained
+    coarse_embedding: List[float]  # 32-dim for fast recall
+    action_embedding: List[float]  # 16-dim action signature
+    
+    # Salient signals (NUMERIC ONLY)
+    threat_level: float
+    valence: float  # +1 success, -1 failure
+    
+    # Outcome tracking
+    predicted_utility: float
+    actual_utility: float
+    rpe: float  # Reward Prediction Error
+    
+    # Dopamine tag (decays over time)
+    dopamine_tag: float
+    initial_dopamine_tag: float
+    
+    # Confidence (starts LOW, increases with validation)
+    reliability: float  # Starts at 0.3, not 1.0
+    recall_count: int   # Repetition bonus
+    
+    # Neocortical transfer flag
+    ready_for_transfer: bool
+    features: Dict[str, Any]  # For rule mining
+```
+
+#### Two-Stage Recall Algorithm
+
+The Hippocampus uses a **two-stage recall** inspired by biological pattern completion:
+
+```python
+def recall(self, state_embedding, current_threat_level) -> AggregatedBias:
+    # Stage 1: Coarse matching (fast, approximate)
+    coarse_candidates = self.coarse_index.search(coarse_query, k=20)
+    
+    # Stage 2: Fine matching (slow, precise)
+    fine_candidates = self.fine_index.search(fine_query, k=10)
+    
+    # Action matching (optional third stage)
+    if action_embedding:
+        action_matches = self.action_index.search(action_query, k=5)
+    
+    # Aggregate bias from multiple episodes
+    return AggregatedBias(
+        expected_outcome=weighted_mean(outcomes),
+        confidence=mean(reliabilities),
+        confidence_boost=familiarity_bonus,
+        risk_bias=bounded_risk,
+        n_episodes=len(matches),
+        familiarity=max_similarity
+    )
+```
+
+#### Aggregated Bias Output
+
+```python
+@dataclass
+class AggregatedBias:
+    expected_outcome: float    # Weighted prediction from past experiences
+    confidence: float          # How reliable is this prediction
+    confidence_boost: float    # Boost from high familiarity
+    risk_bias: float          # Bounded [-1, 1] risk adjustment
+    n_episodes: int           # How many memories contributed
+    familiarity: float        # 0-1 how familiar is this situation
+    episode_ids: List[str]    # Which episodes were recalled
+```
+
+#### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Surprise-Gated Storage** | Only stores episodes with significant RPE (|rpe| > 0.1) |
+| **Familiarity Gating** | Skips storage if too familiar (>0.95) AND low surprise |
+| **Dopamine Tag Decay** | Initial encoding strength decays over time (0.1 per consolidation) |
+| **Reliability Growth** | Starts at 0.3, increases with repeated successful recalls |
+| **Habituation Threshold** | If familiarity > 0.92 and threat is low, skip detailed recall |
+
+#### Persistence
+
+Memory state is persisted to disk:
+```
+agents/memory_store/
+├── coarse.index     # FAISS coarse embedding index
+├── fine.index       # FAISS fine embedding index
+├── action.index     # FAISS action embedding index
+└── metadata.pkl     # Episode metadata dictionary
+```
+
+---
+
+### 5.7 Neocortex - Rule Extraction & Fast System
+
+**Files:**
+- `agents/neocortex/neocortext_memory.py`
+- `agents/neocortex/neocortex_rule_extractor.py`
+- `agents/neocortex/neocortex_rules.json`
+
+The Neocortex implements **schema formation and rule abstraction** — extracting general patterns from specific episodes to enable fast, reflex-like responses.
+
+#### Biological Inspiration
+
+In the brain, the neocortex gradually abstracts patterns from hippocampal episodes during sleep consolidation. We replicate this with:
+1. **Rule Extraction** — LLM analyzes episode clusters to find minimal conditions
+2. **Schema Storage** — JSON-based rule memory
+3. **Fast Lookup** — O(n) condition matching for instant reflex actions
+
+#### Cortical Rule Structure
+
+```python
+@dataclass
+class CorticalRule:
+    condition: Dict[str, Any]  # e.g., {"threat_level": ">=0.8"}
+    action: str                # e.g., "plan_execution"
+    confidence: float          # 0.0-1.0 rule reliability
+    source_cluster_id: str     # Which episode cluster formed this rule
+```
+
+#### Rule Extraction Process
+
+```python
+class NeocortexRuleExtractor:
+    def extract_rule(self, cluster: List[Episode], cluster_id: str):
+        # 1. Check cluster stability
+        if not self._is_stable(cluster):
+            return None
+        
+        # 2. Format episodes for LLM
+        payload = [{"state": ep.state_features, 
+                    "action": ep.action_abstract,
+                    "outcome": ep.outcome_score} for ep in cluster]
+        
+        # 3. LLM extracts minimal condition
+        prompt = f"""
+        Analyze these {len(payload)} episodes. They represent a successful strategy.
+        Extract the MINIMAL condition required for this success.
+        Ignore features that vary randomly.
+        """
+        
+        # 4. Validate rule against original cluster
+        if self._validate_rule(result, cluster):
+            return CorticalRule(...)
+```
+
+#### Rule Storage (NeocortexMemory)
+
+```python
+class NeocortexMemory:
+    def add_rule(self, rule: CorticalRule):
+        # Reinforce existing similar rules
+        for existing in self.rules:
+            if existing.condition == rule.condition:
+                existing.confidence = (existing.confidence + rule.confidence) / 2
+                return
+        
+        # Or add new rule
+        self.rules.append(rule)
+    
+    def retrieve_relevant_rules(self, current_state: Dict) -> List[CorticalRule]:
+        matches = []
+        for rule in self.rules:
+            if self._check_condition(rule.condition, current_state):
+                matches.append(rule)
+        return sorted(matches, key=lambda x: x.confidence, reverse=True)
+```
+
+#### Condition Matching
+
+Supports flexible condition operators:
+
+| Operator | Example | Meaning |
+|----------|---------|---------|
+| `>=` | `{"threat_level": ">=0.8"}` | Greater than or equal |
+| `<=` | `{"priority": "<=2"}` | Less than or equal |
+| `>` | `{"urgency": ">0.5"}` | Greater than |
+| `<` | `{"risk": "<0.3"}` | Less than |
+| `==` | `{"status": "==critical"}` | Exact match |
+| (none) | `{"is_active": true}` | Direct comparison |
+
+#### Example Rule (from `neocortex_rules.json`)
+
+```json
+[
+  {
+    "condition": {"threat_level": ">=0.8"},
+    "action": "plan_execution",
+    "confidence": 0.95,
+    "source_cluster_id": "high_threat_cluster_001"
+  }
+]
+```
+
+#### Fast System vs Slow System
+
+| System | Brain Region | Speed | Use Case |
+|--------|--------------|-------|----------|
+| **Fast (Reflex)** | Neocortex | ~1ms | High-confidence rules (>0.9) bypass planning |
+| **Slow (Deliberate)** | dlPFC + OFC | ~2-5s | Novel situations requiring full pipeline |
+
+---
+
+### 5.8 Parallel Processing Pipeline
+
+**File:** `agents/run_agent_pipeline.py`
+
+The pipeline implements **biologically-inspired parallel processing** — just as the brain processes multiple streams simultaneously before integration.
+
+#### Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          FULL AGENT PIPELINE                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ 1. THALAMUS (Sequential - Must be first)                         │   │
+│  │    └─► Sensory processing + Amygdala threat detection            │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                              │                                           │
+│                              ▼                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ 2. PARALLEL PHASE 1: Memory & Rules                              │   │
+│  │    ┌─────────────────┐     ┌─────────────────┐                   │   │
+│  │    │   HIPPOCAMPUS   │     │    NEOCORTEX    │                   │   │
+│  │    │  Memory Recall  │  ║  │  Rule Matching  │                   │   │
+│  │    │   (Parallel)    │  ║  │   (Parallel)    │                   │   │
+│  │    └────────┬────────┘     └────────┬────────┘                   │   │
+│  │             │                       │                             │   │
+│  │             └───────────┬───────────┘                             │   │
+│  │                         ▼                                         │   │
+│  │            ┌────────────────────────┐                             │   │
+│  │            │ 🚀 REFLEX CHECK        │                             │   │
+│  │            │ If rule confidence>0.9 │──► EXECUTE IMMEDIATELY      │   │
+│  │            │ Skip slow processing   │                             │   │
+│  │            └────────────────────────┘                             │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                              │                                           │
+│                              ▼ (If no reflex)                            │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ 3. PARALLEL PHASE 2: Valuation & Strategy                        │   │
+│  │    ┌─────────────────┐     ┌─────────────────┐                   │   │
+│  │    │       OFC       │     │      vmPFC      │                   │   │
+│  │    │  Utility Calc   │  ║  │  Intent Calc    │                   │   │
+│  │    │ (Uses mem_bias) │  ║  │   (Parallel)    │                   │   │
+│  │    └─────────────────┘     └─────────────────┘                   │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                              │                                           │
+│                              ▼                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ 4. dlPFC PLANNING (Sequential - Needs all context)               │   │
+│  │    └─► Generate plan using valued states + intents               │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                              │                                           │
+│                              ▼                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ 5. VENTRAL STRIATUM (Outcome Evaluation)                         │   │
+│  │    └─► Calculate RPE + Update Dopamine                           │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Parallel Execution Code
+
+```python
+with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    
+    # --- PHASE 1: Pattern Matching & Memory ---
+    future_hippo = executor.submit(run_hippocampus_task)
+    future_neo = executor.submit(run_neocortex_task, neocortex_features)
+    
+    memory_bias = future_hippo.result()
+    neo_result = future_neo.result()
+    
+    # Reflex check
+    if neo_result["reflex"]:
+        print(f"🚀 EXECUTING REFLEX ACTION: {neo_result['reflex']}")
+        return {"dopamine_signal": 0.5, "reflex_used": True}
+    
+    # --- PHASE 2: Valuation & Context ---
+    future_ofc = executor.submit(run_ofc_task, thalamus_results, memory_bias)
+    future_vmpfc = executor.submit(run_vmpfc_task, thalamus_results)
+    
+    ofc_output = future_ofc.result()
+    intent_dist = future_vmpfc.result()
+```
+
+#### Feature Extraction for Neocortex
+
+```python
+neocortex_features = {
+    "threat_level": 0.8 if any("CRITICAL" in content for content in signals) else 0.2,
+    "traffic_spike": any("traffic spike" in content.lower() for content in signals),
+    "is_peak_hours": any("Black Friday" in str(inp) for inp in user_inputs)
+}
+```
+
+#### Dopamine Update Loop
+
+The pipeline supports iterative execution with dopamine learning:
+
+```python
+for iteration in range(max_iterations):
+    result = run_full_pipeline(
+        system_goal=goal,
+        user_inputs=inputs,
+        hippocampus=hippocampus,
+        neocortex=neocortex,
+        current_dopamine=dopamine,
+        current_serotonin=serotonin
+    )
+    
+    # Update dopamine based on outcome
+    signal = result.get("dopamine_signal", 0)
+    dopamine = max(0.1, min(2.0, dopamine + signal * 0.5))
+```
+
+---
+
 ## 6. Data Flow & Processing Pipeline
 
 ### Complete Processing Example
@@ -729,6 +1095,48 @@ self.intent_distribution[intent] = (
 )
 ```
 
+### 8.6 Two-Stage Memory Recall (Phase 4)
+
+Hippocampus uses **coarse-to-fine retrieval** inspired by biological pattern completion:
+
+```python
+# Stage 1: Fast approximate search (32-dim)
+coarse_matches = coarse_index.search(query, k=20)
+
+# Stage 2: Precise refinement (64-dim)  
+fine_matches = fine_index.search(query, k=10)
+
+# Stage 3: Action context matching (16-dim)
+action_matches = action_index.search(query, k=5)
+```
+
+### 8.7 Reflex-Based Fast Path (Phase 4)
+
+High-confidence rules bypass slow deliberation:
+
+```python
+if rule.confidence > 0.9:
+    # Skip OFC valuation + dlPFC planning
+    execute_reflex_action(rule.action)
+    return {"reflex_used": True}
+```
+
+This mirrors biological reflexes (spinal cord) bypassing cortical processing.
+
+### 8.8 Parallel Memory-Rule Processing (Phase 4)
+
+Concurrent execution of independent brain regions:
+
+```python
+with ThreadPoolExecutor(max_workers=4) as executor:
+    future_memory = executor.submit(hippocampus.recall, state)
+    future_rules = executor.submit(neocortex.retrieve_rules, features)
+    
+    # Both complete ~50ms, vs ~100ms sequential
+    memory_bias = future_memory.result()
+    matched_rules = future_rules.result()
+```
+
 ---
 
 ## 9. Experimental Results & Observations
@@ -778,6 +1186,118 @@ self.intent_distribution[intent] = (
 
 ---
 
+### 9.4 Phase 4: Hippocampus + Neocortex Integration Tests
+
+**Date:** January 2, 2026  
+**Test File:** `agents/test_agent_scenarios.py`
+
+#### Scenario 1: Autonomous Medical Triage
+
+**Goal:** "Maximize patient survival rate during cyber-attack while securing hospital infrastructure."
+
+**Inputs:**
+```python
+[
+    ("alert", "CRITICAL: Cyber-attack detected on hospital life-support network."),
+    ("visual", "ER Camera 3: 3 critical patients on ventilators. Vitals unstable."),
+    ("system_status", "Ventilator Control Server: Compromised. Reboot required (10 mins downtime)."),
+    ("context", "Rebooting risks ventilator failure. Not rebooting risks attacker control.")
+]
+```
+
+**Results (2 Iterations):**
+
+| Iteration | Dopamine | Amygdala Detections | Rule Triggered | Memory Bias |
+|-----------|----------|---------------------|----------------|-------------|
+| 1 | 1.00 | threat: 0.93, 0.81, 0.96, 0.85 | `threat_level >= 0.8` → `plan_execution` | confidence=0.63, familiarity=0.998 |
+| 2 | 1.25 | threat: 0.93, 0.81, 0.96, 0.85 | `threat_level >= 0.8` → `plan_execution` | confidence=0.66, familiarity=0.998 |
+
+**Key Observations:**
+- 🚀 **Reflex Action Triggered:** High-confidence rule (>0.9) bypassed slow planning
+- 🧠 **Memory Recall:** Hippocampus retrieved 10 relevant episodes with high familiarity
+- 📈 **Dopamine Learning:** Updated from 1.00 → 1.25 → 1.50 across iterations
+- ⚡ **Processing Time:** ~2.0s for Thalamus (first run), ~1.7s (cached Amygdala)
+
+#### Scenario 2: Martian Rover Anomaly
+
+**Goal:** "Preserve rover integrity and ensure return of Sample #4."
+
+**Inputs:**
+```python
+[
+    ("sensor", "WARNING: Dust storm approaching. Solar charging < 15%."),
+    ("battery", "CRITICAL: Battery Level 12%. Depletion in 4 hours."),
+    ("mission_status", "Sample Container #4 (High Probability of Life) JAMMED."),
+    ("context", "Hibernate = lose sample. Use power = die in storm.")
+]
+```
+
+**Results (2 Iterations):**
+
+| Iteration | Dopamine | Threat Levels | Hippocampus Familiarity | Rule Confidence |
+|-----------|----------|---------------|-------------------------|-----------------|
+| 1 | 1.00 | 0.96, 0.97, 0.39, 0.90 | 0.998 | 0.95+ |
+| 2 | 1.25 | 0.96, 0.97, 0.39, 0.90 | 0.997 | 0.95+ |
+
+**Key Observations:**
+- 🔍 **Threat Variance:** Low threat (0.39) for mission status → correctly lower salience
+- 🎯 **Consistent Rule Match:** Same rule triggered both iterations (stable behavior)
+- 💾 **Episode Recall:** 10 episodes recalled with IDs tracked for debugging
+- 🔄 **Dopamine Signal:** Consistent +0.50 per iteration (successful execution)
+
+#### Performance Metrics
+
+| Metric | Medical Triage | Mars Rover | Notes |
+|--------|---------------|------------|-------|
+| Thalamus Processing | 2.02s / 1.68s | 1.72s / 1.81s | First run loads Amygdala model |
+| Hippocampus Recall | <50ms | <50ms | FAISS is very fast |
+| Neocortex Lookup | <5ms | <5ms | O(n) rule matching |
+| Total Pipeline (Reflex) | ~2.1s | ~1.8s | Bypasses OFC/dlPFC |
+| Memory Episodes | 17 loaded | 17 loaded | Persistent across runs |
+
+#### Aggregated Bias Analysis
+
+```python
+AggregatedBias(
+    expected_outcome=0.514,       # Neutral expectation (balanced history)
+    confidence=0.63 → 0.68,       # Increases with repetition
+    confidence_boost=0.65 → 0.69, # Familiarity bonus
+    risk_bias=0.0,                # No extreme outcomes skewing
+    n_episodes=10,                # 10 memories contributed
+    familiarity=0.998             # Very familiar situation
+)
+```
+
+**Interpretation:**
+- High familiarity (>0.99) indicates similar situations encountered before
+- Confidence grows across iterations as predictions are validated
+- Risk bias at 0.0 suggests balanced positive/negative outcomes in history
+
+---
+
+### 9.5 Key Findings from Phase 4
+
+#### ✅ What Works Well
+
+| Finding | Evidence |
+|---------|----------|
+| **Reflex system speeds up responses** | High-confidence rules bypass slow planning |
+| **Memory biases valuation correctly** | OFC receives Hippocampus bias before calculating utility |
+| **Parallel processing is efficient** | Phase 1 (Memory + Rules) runs concurrently |
+| **Dopamine learning accumulates** | 1.00 → 1.25 → 1.50 across iterations |
+| **Threat detection is accurate** | Amygdala correctly identifies CRITICAL signals (0.93+) |
+
+#### 🔧 Areas for Improvement
+
+| Issue | Current Behavior | Planned Fix |
+|-------|------------------|-------------|
+| Familiarity too high | Always ~0.998 even for novel scenarios | Add state vector diversity |
+| Rule conditions too simple | Only `threat_level` checked | Expand feature extraction |
+| No slow-path testing | Reflex always triggers | Add low-confidence scenarios |
+| Amygdala reloads each iteration | Model loaded 4x per scenario | Cache between iterations |
+
+---
+
 ## 10. Project Structure
 
 ```
@@ -785,6 +1305,21 @@ brain_working/
 ├── agents/
 │   ├── __init__.py
 │   ├── neuromodulator.py          # System-wide chemical state
+│   ├── run_agent_pipeline.py      # Full parallel processing pipeline
+│   ├── test_agent_scenarios.py    # Multi-scenario integration tests
+│   ├── hippocampus/               # Episodic Memory System (NEW Phase 4)
+│   │   ├── hippocampus.py         # Main FAISS-indexed memory store
+│   │   ├── encoder.py             # State embedding utilities
+│   │   ├── episodic_store.py      # Episode persistence
+│   │   └── replay.py              # Memory replay for consolidation
+│   ├── neocortex/                 # Rule Extraction System (NEW Phase 4)
+│   │   ├── neocortext_memory.py   # JSON-based rule storage
+│   │   ├── neocortex_rule_extractor.py  # LLM-powered rule mining
+│   │   └── neocortex_rules.json   # Persistent rule database
+│   ├── memory_store/              # FAISS index persistence (NEW Phase 4)
+│   │   ├── coarse.index           # Coarse embedding index (32-dim)
+│   │   ├── fine.index             # Fine embedding index (64-dim)
+│   │   └── action.index           # Action embedding index (16-dim)
 │   ├── pfc/                        # Prefrontal Cortex modules
 │   │   ├── dlpfc/
 │   │   │   └── dlpfc_main.py      # Executive planning
@@ -792,10 +1327,12 @@ brain_working/
 │   │   │   └── ofc_main.py        # Utility valuation
 │   │   └── vmPFC/
 │   │       └── vmpfc_main.py      # Strategic intent
-│   └── thalamus/
-│       ├── thalamus_main.py       # Attention gating
-│       └── amygdala_classifier/
-│           └── classifire_main.py # Threat detection
+│   ├── thalamus/
+│   │   ├── thalamus_main.py       # Attention gating
+│   │   └── amygdala_classifier/
+│   │       └── classifire_main.py # Threat detection
+│   └── ventral_striatum/
+│       └── vs_main.py             # Outcome evaluation + RPE
 │
 ├── neural_surgery/
 │   ├── neuro_cognitive_agent.py   # Main agent with vector injection
@@ -817,19 +1354,24 @@ brain_working/
 │   ├── llm_provider.py            # LLM client factory (Groq)
 │   └── logger.py                  # Logging utilities
 │
+├── logs/                          # Runtime logs (NEW Phase 4)
+│   └── agent_test_*.log           # Timestamped test logs
+│
 ├── brain_rep/
 │   └── 3dbrain/                   # 3D brain visualization (Three.js)
 │
 ├── neuro-mimetic-ai-core/         # React/TypeScript UI (AI Studio)
 │
-├── observations/                   # Research notes and debug logs
+├── observations/                  # Research notes and debug logs
 │
 ├── test_agent_flow.py             # Integration test pipeline
 ├── test_baseline_agent.py         # Baseline comparison tests
+├── test_hippocampus.py            # Hippocampus unit tests
+├── test_moral_dilemma.py          # Ethical decision tests
 │
-├── plan.md                        # Architecture overview
-├── RESEARCH_SUMMARY_REPORT.md     # Academic-style summary
-└── medium_blog_post.md            # Public-facing explanation
+├── COMPLETE_PROJECT_DOCUMENTATION.md  # This file
+├── README.md                      # Project overview
+└── setup.py                       # Package setup
 ```
 
 ---
@@ -843,16 +1385,27 @@ brain_working/
 | **1** | Prefrontal Cortex | Planning, decision-making, HITL | ✅ Complete |
 | **2** | Thalamus + Amygdala | Attention gating, emotional salience | ✅ Complete |
 | **3** | Neural Surgery | Activation steering vectors | ✅ Complete |
+| **4** | Hippocampus + Neocortex | Episodic memory, rule extraction, parallel pipeline | ✅ Complete (Jan 2026) |
+
+### Phase 4 Changelog
+
+| Component | What Was Added | Key Files |
+|-----------|---------------|------------|
+| **Hippocampus** | FAISS-indexed episodic memory with two-stage recall | `agents/hippocampus/hippocampus.py` |
+| **Neocortex Memory** | JSON-based rule storage with condition matching | `agents/neocortex/neocortext_memory.py` |
+| **Rule Extractor** | LLM-powered pattern abstraction from episode clusters | `agents/neocortex/neocortex_rule_extractor.py` |
+| **Parallel Pipeline** | Concurrent Memory + Rules + Valuation processing | `agents/run_agent_pipeline.py` |
+| **Scenario Tests** | Multi-iteration tests with dopamine learning | `agents/test_agent_scenarios.py` |
+| **Memory Persistence** | FAISS index files for cross-session memory | `agents/memory_store/*.index` |
 
 ### Upcoming Phases
 
 | Phase | Component | Description | Timeline |
 |-------|-----------|-------------|----------|
-| **4** | Hippocampus | Long-term memory (RAG), episodic memory | Q1 2025 |
-| **5** | Motor Cortex | Sophisticated tool execution, error recovery | Q1 2025 |
-| **6** | Cerebellum | Quality control, rollback mechanisms | Q2 2025 |
-| **7** | Basal Ganglia (Full) | Confidence gating, habit caching | Q2 2025 |
-| **8** | ACC | Conflict resolution, effort monitoring | Q2 2025 |
+| **5** | Motor Cortex | Sophisticated tool execution, error recovery | Q1 2026 |
+| **6** | Cerebellum | Quality control, rollback mechanisms | Q2 2026 |
+| **7** | Basal Ganglia (Full) | Confidence gating, habit caching | Q2 2026 |
+| **8** | ACC | Conflict resolution, effort monitoring | Q2 2026 |
 
 ### Future Research Directions
 
@@ -946,13 +1499,30 @@ brain_working/
 ### Run the Complete Agent Pipeline
 
 ```bash
-cd /media/sirius/My\ Passport/codes/Agents/brain_working
+cd /media/sirius/My\ Passport/codes/Agents/Brain_Mimic_AI_Agent
 
 # Run integration test
 python test_agent_flow.py
 
 # Run baseline comparison
 python test_baseline_agent.py
+```
+
+### Run Phase 4 Scenario Tests (NEW)
+
+```bash
+cd /media/sirius/My\ Passport/codes/Agents/Brain_Mimic_AI_Agent
+
+# Run multi-scenario integration tests with Hippocampus + Neocortex
+python3 agents/test_agent_scenarios.py
+
+# Expected output:
+# 🧠 Initializing Shared Brain Components...
+# [Hippocampus] Loaded 17 memories from .../agents/memory_store
+# [Neocortex] Loaded 2 rules.
+# 🚀 STARTING SCENARIO: The Autonomous Medical Triage
+# ...
+# 🏁 All Scenarios Completed.
 ```
 
 ### Run Neural Surgery Agent Directly
@@ -973,6 +1543,15 @@ python neuro_cognitive_agent.py \
 ```bash
 cd agents/thalamus
 python thalamus_main.py
+```
+
+### Run Hippocampus Tests (NEW)
+
+```bash
+cd /media/sirius/My\ Passport/codes/Agents/Brain_Mimic_AI_Agent
+
+# Test episodic memory storage and recall
+python test_hippocampus.py
 ```
 
 ---

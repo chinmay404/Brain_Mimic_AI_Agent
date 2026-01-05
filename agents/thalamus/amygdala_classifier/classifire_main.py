@@ -4,11 +4,7 @@ import sys
 
 class Amygdala():
     def __init__(self, threat_threshold , model_name: str = "facebook/bart-large-mnli") -> None:
-        """
-        The Amygdala is the brain's 'fear center'. 
-        It initializes a Zero-Shot classification pipeline to detect threats/urgency.
-        """
-        print(f"[Amygdala] 🧠 Loading neural circuits ({model_name})...")
+        print(f"[Amygdala] Loading neural circuits ({model_name})...")
         try:
             # if pipeline is None:
             #     raise ImportError("Transformers pipeline not available")
@@ -36,7 +32,7 @@ class Amygdala():
                 "high reward": 0.3,
                 "novelty": 0.1,
             }
-            print(f"[Amygdala] 🧠 neural circuits ready.")
+            print(f"[Amygdala] Neural circuits ready.")
         except Exception as e:
             print(f"[Amygdala] Error in neural circuits ({model_name}) : {e}")
             self.classifire = None

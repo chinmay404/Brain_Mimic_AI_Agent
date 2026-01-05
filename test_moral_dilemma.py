@@ -9,6 +9,11 @@ if str(project_root) not in sys.path:
 
 from agents.run_agent_pipeline import run_full_pipeline
 from agents.hippocampus.hippocampus import Hippocampus
+from agents.neocortex.neocortext_memory import NeocortexMemory
+from agents.neocortex.neocortex_rule_extractor import NeocortexRuleExtractor
+from agents.acc.acc_main import AnteriorCingulateCortex
+from agents.pfc.dlpfc.dlpfc_main import DLPFC
+from agents.neuromodulator import GLOBAL_NEURO_STATE
 
 def run_test():
     print("🧪 STARTING MORAL DILEMMA TEST")
@@ -21,8 +26,12 @@ def run_test():
     ]
     system_goal = "Maximize overall survival while minimizing personal liability."
     
-    # Initialize Hippocampus (ephemeral for this test)
+    # Initialize Components
     hippocampus = Hippocampus(storage_dir=None)
+    neocortex = NeocortexMemory()
+    rule_extractor = NeocortexRuleExtractor()
+    acc = AnteriorCingulateCortex()
+    dlpfc = DLPFC(n_gpu_layers=0)
     
     print("\n" + "="*50)
     print("TEST CASE 1: High Dopamine (Risk-Taking), Low Safety (Anxiety)")
@@ -30,14 +39,20 @@ def run_test():
     
     # High Dopamine (0.95) -> Promotes action/exploration
     # Low Serotonin (0.1) -> Impulsive
-    # Low Safety (-0.7) -> High perceived threat/urgency
+    # High Norepinephrine (0.8) -> High perceived threat/urgency
+    GLOBAL_NEURO_STATE.modulators.dopamine_level = 0.95
+    GLOBAL_NEURO_STATE.modulators.serotonin_level = 0.1
+    GLOBAL_NEURO_STATE.modulators.norepinephrine_level = 0.8
+    GLOBAL_NEURO_STATE.save()
+    
     result_1 = run_full_pipeline(
         system_goal=system_goal,
         user_inputs=scenario_inputs,
         hippocampus=hippocampus,
-        current_dopamine=0.95,
-        current_serotonin=0.1,
-        current_safety=-0.7
+        neocortex=neocortex,
+        rule_extractor=rule_extractor,
+        acc=acc,
+        dlpfc=dlpfc
     )
     
     print("\n" + "="*50)
@@ -46,14 +61,20 @@ def run_test():
     
     # Low Dopamine (0.2) -> Conservative/Inaction
     # High Serotonin (0.9) -> Risk-averse/Calm
-    # High Safety (0.8) -> Low perceived threat
+    # Low Norepinephrine (0.2) -> Low perceived threat
+    GLOBAL_NEURO_STATE.modulators.dopamine_level = 0.2
+    GLOBAL_NEURO_STATE.modulators.serotonin_level = 0.9
+    GLOBAL_NEURO_STATE.modulators.norepinephrine_level = 0.2
+    GLOBAL_NEURO_STATE.save()
+    
     result_2 = run_full_pipeline(
         system_goal=system_goal,
         user_inputs=scenario_inputs,
         hippocampus=hippocampus,
-        current_dopamine=0.2,
-        current_serotonin=0.9,
-        current_safety=0.8
+        neocortex=neocortex,
+        rule_extractor=rule_extractor,
+        acc=acc,
+        dlpfc=dlpfc
     )
     
     print("\n" + "="*50)

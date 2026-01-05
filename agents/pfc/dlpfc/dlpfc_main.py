@@ -10,10 +10,6 @@ from agents.pfc.vmPFC.vmpfc_main import VMPFC, NeuroContext, StrategicIntent
 from agents.thalamus.thalamus_main import Thalamus
 from neural_surgery.neuro_cognitive_agent import NeuroCognitiveAgent
 
-# =============================================================================
-# DATA STRUCTURES
-# =============================================================================
-
 class ExecutiveBias(Enum):
     EMERGENCY = "emergency"
     FOCUSED = "focused"
@@ -53,10 +49,6 @@ class ExecutivePlan:
     active_priorities: List[str]
     deferred_items: List[str]
 
-# =============================================================================
-# WORKING MEMORY
-# =============================================================================
-
 class WorkingMemory:
     def __init__(self):
         self.goal: Optional[str] = None
@@ -77,10 +69,6 @@ class WorkingMemory:
     def pop_context(self) -> Optional[Dict]:
         return self.context_stack.pop() if self.context_stack else None
 
-# =============================================================================
-# dlPFC - THE EXECUTIVE CONTROLLER
-# =============================================================================
-
 class DLPFC:
     """
     Dorsolateral Prefrontal Cortex - The Executive Controller.
@@ -94,7 +82,7 @@ class DLPFC:
         replan_threshold: float = 0.3,
         n_gpu_layers: int = 0,
     ):
-        print("[dlPFC] 🧠 Initializing Dorsolateral Prefrontal Cortex...")
+        print("[dlPFC] Initializing dorsolateral prefrontal cortex...")
         self.dopamine = dopamine
         self.serotonin = serotonin
         self.safety = safety
@@ -131,11 +119,8 @@ JSON FORMAT:
 }
 """
 
-        print(f"[dlPFC] 🧠 Executive circuits ready. (DA={dopamine:.2f}, 5-HT={serotonin:.2f})")
+        print(f"[dlPFC] Executive circuits ready. (DA={dopamine:.2f}, 5-HT={serotonin:.2f})")
 
-    # =========================================================================
-    # CORE METHODS
-    # =========================================================================
 
     def _determine_executive_bias(self, valued_states: List[ValuedStimulus]) -> ExecutiveBias:
         if not valued_states:
@@ -300,9 +285,9 @@ JSON FORMAT:
         print("\n" + "=" * 70)
         print("dlPFC EXECUTIVE PLAN")
         print("=" * 70)
-        print(f"\n🎯 GOAL: {plan.goal}")
-        print(f"🧠 EXECUTIVE BIAS: {plan.executive_bias.value.upper()}")
-        print(f"📊 CONFIDENCE: {plan.confidence:.2f}")
+        print(f"\nGOAL: {plan.goal}")
+        print(f"EXECUTIVE BIAS: {plan.executive_bias.value.upper()}")
+        print(f"CONFIDENCE: {plan.confidence:.2f}")
         
         print(f"\n📋 ACTION SEQUENCE ({len(plan.steps)} steps):")
         print("-" * 60)
@@ -317,7 +302,7 @@ JSON FORMAT:
                 print(f"  [{sig.inhibition_type.value.upper()}] {sig.target} - {sig.reason}")
                 
         if plan.replan_triggers:
-            print(f"\n⚡ REPLAN TRIGGERS: {plan.replan_triggers}")
+            print(f"\nREPLAN TRIGGERS: {plan.replan_triggers}")
         print("=" * 70)
 
     # =========================================================================
@@ -335,7 +320,7 @@ JSON FORMAT:
 
     def check_replan_needed(self, current_dopamine: float) -> bool:
         if current_dopamine < self.replan_threshold:
-            print(f"[dlPFC] ⚠️ Dopamine dropped to {current_dopamine:.2f} - replan triggered!")
+            print(f"[dlPFC] Dopamine dropped to {current_dopamine:.2f} - replan triggered")
             self.dopamine = current_dopamine
             return True
         return False
@@ -344,17 +329,8 @@ JSON FORMAT:
         if hasattr(self, 'llm'):
             del self.llm
 
-# =============================================================================
-# MAIN - FULL PIPELINE TEST
-# =============================================================================
-
 if __name__ == "__main__":
-    # =========================================================================
-    # 1. THALAMUS PROCESSING
-    # =========================================================================
-    print("\n" + "=" * 70)
-    print("--- 1. THALAMUS PROCESSING ---")
-    print("=" * 70)
+    print("\nThalamus processing...")
     
     thalamus = Thalamus()
     goal_text = "Cook dinner without burning food"

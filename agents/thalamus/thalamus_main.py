@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 import numpy as np
 # from agents.neuromodulator import Neuromodulators
 from typing import List, Tuple
@@ -26,8 +27,14 @@ def softmax(x: np.ndarray, temperature: float = 1.0) -> np.ndarray:
 class EmbeddingModel:
     def encode(self, text: str) -> np.ndarray:
         try:
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001",
-                                                      api_key="AIzaSyAVZ3HLSYf2ngvyssUc4Ky8-B5KjFUii60")
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY not set")
+
+            embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/gemini-embedding-001",
+                api_key=api_key,
+            )
             return np.array(embeddings.embed_query(text))
 
         except Exception as e:

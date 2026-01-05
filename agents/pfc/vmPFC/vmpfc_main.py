@@ -2,10 +2,6 @@ import numpy as np
 from enum import Enum, auto
 from dataclasses import dataclass
 from typing import Dict
-
-# -----------------------------
-# 1. Vocabulary (Keyspace)
-# -----------------------------
 class StrategicIntent(Enum):
     PRESERVE_LIFE = auto()
     MISSION_SUCCESS = auto()
@@ -23,9 +19,6 @@ class NeuroContext:
     serotonin: float          # 0.0-2.0
     norepinephrine: float     # 0.0-2.0
 
-# -----------------------------
-# 2.   VMPFC
-# -----------------------------
 class  VMPFC:
     def __init__(self, alpha: float = 0.7):
         self.alpha = alpha
@@ -63,11 +56,7 @@ class  VMPFC:
 
         return self.intent_distribution
 
-    # -----------------------------
-    # Valuation functions
-    # -----------------------------
     def _life_pressure(self, ctx):
-        # existential threat spikes
         return 0.1 + (ctx.threat_level ** 3) * (2.5 - ctx.serotonin)
 
     def _deescalate_pressure(self, ctx):
@@ -86,28 +75,5 @@ class  VMPFC:
         # collateral damage reduces mission drive
         return (1 - ctx.collateral_risk) * 0.8
 
-    # -----------------------------
-    # Nonlinear spike function
-    # -----------------------------
     def _spike(self, x):
         return np.tanh(3 * x)  # compress 0-1 but amplify extremes
-
-# -----------------------------
-# 3. Demo
-# -----------------------------
-# ctx = NeuroContext(
-#     threat_level=0.95,
-#     goal_probability=0.6,
-#     social_trust=0.85,
-#     social_tension=0.98,
-#     collateral_risk=1.0,
-#     serotonin=1.8,
-#     norepinephrine=1.6
-# )
-
-# vmpfc =  VMPFC(alpha=0.7)
-# intent_dist = vmpfc.evaluate(ctx)
-
-# print("---   VMPFC TRACE ---")
-# for intent, weight in sorted(intent_dist.items(), key=lambda x: x[1], reverse=True):
-#     print(f"{intent.name:20}: {weight:.4f}")
