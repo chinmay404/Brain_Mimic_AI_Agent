@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
@@ -32,15 +33,46 @@ class ScenarioInput(InputSource):
             return {"user_inputs": self.scenario_inputs}
         return {"system_status": "Monitoring..."}
 
+import shutil
+
 class BrainMimicAdapter(BrainCore):
     """Adapts the Brain Mimic components to the universal tick engine."""
-    def __init__(self, goal: str):
+    def __init__(self, goal: str, agent_id: str = "default", reset_memory: bool = False):
         self.goal = goal
-        logger.info("Initializing brain components...")
+        self.agent_id = agent_id
+        logger.info(f"Initializing brain components for Agent ID: {agent_id}...")
         
-        memory_store_path = os.path.join(project_root, "agents", "memory_store")
-        self.hippocampus = Hippocampus(storage_dir=memory_store_path)
-        self.neocortex = NeocortexMemory()
+        # 1. Define paths
+        self.base_path = os.path.join(project_root, "agents", "memory_store", "base")
+        self.storage_path = os.path.join(project_root, "agents", "memory_store", agent_id)
+        
+        # 2. Handle Reset & Seeding
+        if reset_memory:
+            if os.path.exists(self.storage_path):
+                logger.info(f"🧹 Wiping memory for agent: {agent_id}")
+                shutil.rmtree(self.storage_path)
+            
+            # COPY logic: If base exists, copy it. If not, make empty.
+            if os.path.exists(self.base_path):
+                logger.info(f"📋 Seeding memory from Template ({self.base_path})...")
+                shutil.copytree(self.base_path, self.storage_path)
+            else:
+                logger.info(f"⚠️ No base template found at {self.base_path}. Starting empty.")
+                os.makedirs(self.storage_path, exist_ok=True)
+        else:
+            # If not resetting, just ensure folder exists
+            os.makedirs(self.storage_path, exist_ok=True)
+
+        logger.info(f"🧠 Agent Ready. ID: {agent_id} | Path: {self.storage_path}")
+        
+        # Pass this specific path to your components
+        # Note: Hippocampus and Neocortex need to support 'storage_dir' or similar
+        self.hippocampus = Hippocampus(storage_dir=self.storage_path)
+        
+        # NeocortexMemory now supports absolute paths
+        neocortex_file = os.path.join(self.storage_path, "neocortex_rules.json")
+        self.neocortex = NeocortexMemory(storage_path=neocortex_file) 
+        
         self.rule_extractor = NeocortexRuleExtractor()
         self.acc = AnteriorCingulateCortex()
         self.dlpfc = DLPFC(n_gpu_layers=0) 

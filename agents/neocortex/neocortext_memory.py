@@ -6,9 +6,14 @@ from agents.neocortex.neocortex_rule_extractor import CorticalRule
 
 class NeocortexMemory:
     def __init__(self, storage_path: str = "neocortex_rules.json"):
-        # Ensure the path is relative to this file
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.storage_path = os.path.join(base_dir, storage_path)
+        # If storage_path is absolute, use it directly.
+        # Otherwise, make it relative to this file's directory.
+        if os.path.isabs(storage_path):
+            self.storage_path = storage_path
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.storage_path = os.path.join(base_dir, storage_path)
+            
         self.rules: List[CorticalRule] = []
         self.load()
 

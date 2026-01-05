@@ -81,11 +81,31 @@ def run_full_pipeline(
     dlpfc: Any, # Pass initialized DLPFC
     previous_rpe: float = 0.0
 ):
+    # Initialize execution trace
+    execution_trace = {
+        "goal": system_goal,
+        "inputs": user_inputs,
+        "neuro_state": {},
+        "thalamus": {},
+        "memory": {},
+        "valuation": {},
+        "acc": {},
+        "dlpfc": {},
+        "ventral_striatum": {},
+        "learning": {}
+    }
+
     # Get current neuro state
     neuro = GLOBAL_NEURO_STATE.modulators
     current_dopamine = neuro.dopamine_level
     current_serotonin = neuro.serotonin_level
     current_norepinephrine = neuro.norepinephrine_level
+    
+    execution_trace["neuro_state"] = {
+        "dopamine": current_dopamine,
+        "serotonin": current_serotonin,
+        "norepinephrine": current_norepinephrine
+    }
     
     print("\n" + "=" * 80)
     print(f"Neuro-cognitive agent full pipeline")
@@ -124,11 +144,16 @@ def run_full_pipeline(
         thalamus_results = thalamus.process(user_inputs)
         duration = time.time() - start_time
         
+        execution_trace["thalamus"] = {
+            "duration": duration,
+            "signals": [str(s) for s in thalamus_results]
+        }
+        
         print(f"✅ Thalamus processed inputs in {duration:.4f}s")
         print(f"📊 Identified {len(thalamus_results)} relevant signals")
     except Exception as e:
         print(f"❌ Thalamus Error: {e}")
-        return {"dopamine_signal": current_dopamine, "error": str(e)}
+        return {"dopamine_signal": current_dopamine, "error": str(e), "trace": execution_trace}
 
     # =========================================================================
     # PARALLEL PROCESSING BLOCKS
@@ -235,6 +260,11 @@ def run_full_pipeline(
         neo_result = future_neo.result()
         reflex_candidate = neo_result["reflex"]
         neocortex_bias = neo_result["bias"]
+        
+        execution_trace["memory"] = {
+            "hippocampus_bias": str(memory_bias) if memory_bias else None,
+            "neocortex_rule": reflex_candidate or neocortex_bias
+        }
 
         if reflex_candidate:
             print(f"🧠 Reflex candidate proposed by Neocortex: {reflex_candidate}")
@@ -251,10 +281,15 @@ def run_full_pipeline(
         
         ofc_output = future_ofc.result()
         intent_dist = future_vmpfc.result()
+        
+        execution_trace["valuation"] = {
+            "top_stimuli": [v.content[:50] for v in ofc_output['ranked'][:3]],
+            "strategic_intents": {k.name: v for k, v in intent_dist.items() if v > 0.1}
+        }
 
     if not ofc_output['ranked']:
         print("❌ No valued stimuli found. Aborting pipeline.")
-        return {"dopamine_signal": current_dopamine, "error": "No valued stimuli"}
+        return {"dopamine_signal": current_dopamine, "error": "No valued stimuli", "trace": execution_trace}
 
     print("\nTop Valued Stimuli:")
     for i, v in enumerate(ofc_output['ranked'][:3]):
@@ -303,6 +338,13 @@ def run_full_pipeline(
     acc_neuromodulation(GLOBAL_NEURO_STATE.modulators, acc_output.cns_score)
     GLOBAL_NEURO_STATE.save()
     
+    execution_trace["acc"] = {
+        "cns_score": acc_output.cns_score,
+        "control_gain": acc_output.control_gain,
+        "abort_flag": acc_output.abort_flag,
+        "suppress_reflex": acc_output.suppress_reflex
+    }
+    
     print(f"[ACC] CNS={acc_output.cns_score:.2f} | "
           f"ControlGain={acc_output.control_gain:.2f} | "
           f"Strategy={acc_output.strategy_shift} | "
@@ -311,7 +353,7 @@ def run_full_pipeline(
     # --- ACC AUTHORITY ---
     if acc_output.abort_flag:
         print("🛑 ACC ABORTED EXECUTION — HARD STOP")
-        return {"dopamine_signal": current_dopamine, "error": "ACC Abort"}
+        return {"dopamine_signal": current_dopamine, "error": "ACC Abort", "trace": execution_trace}
 
     if reflex_candidate and acc_output.suppress_reflex:
         print("⛔ ACC SUPPRESSED REFLEX ACTION")
@@ -319,10 +361,13 @@ def run_full_pipeline(
         
     if reflex_candidate:
         print(f"\n🚀 EXECUTING ACC-APPROVED REFLEX ACTION: {reflex_candidate}")
+        execution_trace["chosen_action"] = reflex_candidate
+        execution_trace["reflex_used"] = True
         return {
             "dopamine_signal": current_dopamine,
             "reflex_used": True,
-            "chosen_action": reflex_candidate
+            "chosen_action": reflex_candidate,
+            "trace": execution_trace
         }
 
     # =========================================================================
@@ -366,6 +411,12 @@ def run_full_pipeline(
         duration = time.time() - start_time
         print(f"✅ Planning complete in {duration:.4f}s")
         
+        execution_trace["dlpfc"] = {
+            "executive_bias": executive_bias.value,
+            "plan_steps": [s.action for s in steps],
+            "reasoning": reasoning
+        }
+        
         # Build executive plan (simplified for this script)
         plan = ExecutivePlan(
             steps=steps,
@@ -383,7 +434,7 @@ def run_full_pipeline(
         print(f"❌ DLPFC Error: {e}")
         import traceback
         traceback.print_exc()
-        return {"dopamine_signal": current_dopamine, "error": str(e)}
+        return {"dopamine_signal": current_dopamine, "error": str(e), "trace": execution_trace}
 
     # =========================================================================
     # 5. EXECUTION SIMULATION & VENTRAL STRIATUM EVALUATION
@@ -457,6 +508,13 @@ def run_full_pipeline(
         print(f"  - Error Type: {rpe.error_type.value.upper()}")
         print(f"  - Dopamine Signal: {rpe.dopamine_signal:.2f}")
         
+        execution_trace["ventral_striatum"] = {
+            "actual_utility": outcome.actual_utility,
+            "rpe": rpe.error_magnitude,
+            "dopamine_signal": rpe.dopamine_signal,
+            "reflection": outcome.llm_reflection
+        }
+        
         if outcome.llm_reflection:
             print(f"\n📝 LLM Reflection:\n{outcome.llm_reflection}")
 
@@ -491,20 +549,23 @@ def run_full_pipeline(
                 features=neocortex_features
             )
             print("✅ Memory stored successfully.")
+            execution_trace["learning"] = {"stored": True, "reason": "Surprise/Salience"}
         else:
             print("💤 [HPC] Outcome was predictable or not salient. No encoding.")
+            execution_trace["learning"] = {"stored": False, "reason": "Predictable"}
             
         return {
             "dopamine_signal": rpe.dopamine_signal,
             "plan": steps,
-            "chosen_action": steps[0].action if steps else "No action"
+            "chosen_action": steps[0].action if steps else "No action",
+            "trace": execution_trace
         }
             
     except Exception as e:
         print(f"❌ Ventral Striatum Error: {e}")
         import traceback
         traceback.print_exc()
-        return {"dopamine_signal": current_dopamine, "error": str(e)}
+        return {"dopamine_signal": current_dopamine, "error": str(e), "trace": execution_trace}
 
 if __name__ == "__main__":
     # =========================================================================
